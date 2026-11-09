@@ -4,7 +4,7 @@ Based on [ESP32 iPhone Agent](https://github.com/onehumanbeing/esp32-iphone-agen
 Copyright (c) 2026 Henry Yuan. The upstream MIT license and NOTICE are included.
 Public demos, videos, and posts of derived work should credit that project.
 
-此目录是可审查的编译脚本，**还不是 IPA 安装包**。
+此目录是可审查的编译脚本；IPA 安装包从 Actions 构建产物下载。
 
 ## 编译内容
 
@@ -28,15 +28,26 @@ GitHub 标准运行器在公开仓库的计算免费；仅使用标准运行器�
 ## 安装与验证边界
 
 这是独立的 ESP32 Agent 测试应用，与现有 DSH Go 是两个应用。
-开发者未发布可供这台 iPad 安装的 TestFlight 版本，自行构建不代表已完成 iPad 适配。
+本测试版通过本地签名安装，不依赖 TestFlight；自行构建不代表已完成 iPad 控制适配。
 安装后仍要依次验证蓝牙连接、屏幕镜像、USB 指针和实际点击。
 Wi-Fi 版 iPad 需要开发板与 iPad 接入同一路由器；仅连接开发板热点可能无法访问互联网。
-现有固件支持路由器模式，但这台设备尚未配置和验证。
+现有固件支持路由器模式，已验证可通过 USB 配置并连接路由器。
 模型服务需要在应用中自行配置，本构建不包含免费模型额度。
 
-目前没有生成 IPA，也没有运行 Xcode；Windows 本地只完成脚本准备与静态检查。
+## 已验证结果（2026-11-09）
+
+[首次云端构建](https://github.com/luke96778875-eng/esp32-agent-ipad-build/actions/runs/42608472729)已成功：
+
+- 已生成 arm64 真机 IPA，明确包含 iPad 设备类型；主应用和扩展均为未加密 iOS 真机程序。
+- iPad 模拟器测试：272 项，2 项跳过，0 项失败。
+- 本地 SHA-256 和 ZIP 完整性检查通过。
+- 已通过 iLoader 个人签名安装，系统确认签名配置有效；已确认应用能进入欢迎或连接开发板页面。
+- 开发板已连接路由器；iPad 上的蓝牙连接、屏幕镜像及实际点击尚待实机验证。
+
+原始未签名 IPA 的 SHA-256：
+`6f60f21988a2c84ddd12ab0051da5b8c0d5fd57420a0927c4ba0736a043277fc`。
 
 上游该提交的 iOS CI 已编译并运行测试，但有一项屏幕稳定检测测试失败：
 `StillScreenTests.testSettledIgnoresThePointerButNotContent`，实际等待约 0.93 秒，断言要求超过 1.9 秒。
 见 [上游测试记录](https://github.com/onehumanbeing/esp32-iphone-agent/actions/runs/42354473042)。
-本构建保留该测试，不将“编译成功”表述为“全部测试通过”。
+本构建保留该测试，本次 iPad 模拟器运行时该项通过；没有修改或隐藏上游测试。
