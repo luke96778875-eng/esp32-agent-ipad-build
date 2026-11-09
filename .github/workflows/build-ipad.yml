@@ -1,0 +1,84 @@
+name: Build ESP32 Agent iPad IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - name: Check out build recipe
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Check out pinned upstream source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: onehumanbeing/esp32-iphone-agent
+          ref: 0b22d9a99ce7bc887860e46fa1a61761836a55d2
+          path: upstream
+          persist-credentials: false
+      - name: Prepare unsigned iPad build
+        run: python3 prepare.py upstream
+      - name: Build for physical iPad
+        working-directory: upstream/ios
+        run: |
+          set -o pipefail
+          xcodebuild build -project IPhoneAgent.xcodeproj -scheme IPhoneAgent \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/device-build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            TARGETED_DEVICE_FAMILY='1,2' IA_ENTITLEMENTS='' IA_WIDGET_ENTITLEMENTS='' \
+            | tee "$RUNNER_TEMP/device-build.log"
+      - name: Verify and package IPA
+        run: |
+          python3 package_ipa.py "$RUNNER_TEMP/device-build/Build/Products/Release-iphoneos/IPhoneAgent.app" out
+          cp LICENSE NOTICE out/
+          cp README.md out/BUILD-README.md
+      - name: Upload unsigned device IPA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ESP32-Agent-iPad-unsigned
+          path: out/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Choose an iPad simulator
+        run: |
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/simulators.json"
+          python3 - "$RUNNER_TEMP/simulators.json" <<'PY'
+          import json, os, sys
+          devices = json.load(open(sys.argv[1]))['devices']
+          pads = [d for runtime, group in devices.items() if '.iOS-' in runtime
+                  for d in group if d['name'].startswith('iPad') and d.get('isAvailable')]
+          if not pads:
+              raise SystemExit('No available iPad simulator')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write('IPAD_SIM=' + pads[0]['udid'] + '\n')
+          print(pads[0]['name'])
+          PY
+      - name: Run upstream unit tests on iPad simulator
+        working-directory: upstream/ios
+        run: |
+          set -o pipefail
+          xcodebuild test -project IPhoneAgent.xcodeproj -scheme IPhoneAgent \
+            -destination "id=$IPAD_SIM" -only-testing:IPhoneAgentTests \
+            -derivedDataPath "$RUNNER_TEMP/simulator-build" \
+            -resultBundlePath "$RUNNER_TEMP/ipad-tests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO TARGETED_DEVICE_FAMILY='1,2' \
+            IA_ENTITLEMENTS='' IA_WIDGET_ENTITLEMENTS='' \
+            | tee "$RUNNER_TEMP/ipad-tests.log"
+      - name: Upload build and test logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ESP32-Agent-iPad-build-logs
+          path: |
+            ${{ runner.temp }}/device-build.log
+            ${{ runner.temp }}/ipad-tests.log
+            ${{ runner.temp }}/ipad-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 1
